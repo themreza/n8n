@@ -13,6 +13,11 @@ import {
 	OptionsWithUri,
 } from 'request';
 
+import {
+	contactFields,
+	contactOperations
+} from './ContactDescription';
+
 export class Odoo implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Odoo',
@@ -30,8 +35,22 @@ export class Odoo implements INodeType {
 		credentials: [
 		],
 		properties: [
-			// Node properties which the user gets displayed and
-			// can change on the node.
+			{
+				displayName: 'Resource',
+				name: 'resource',
+				type: 'options',
+				options: [
+					{
+						name: 'Contact',
+						value: 'contact',
+					},
+				],
+				default: 'contact',
+				required: true,
+				description: 'Resource to consume.',
+			},
+			...contactOperations,
+			...contactFields,
 		],
 	};
 
