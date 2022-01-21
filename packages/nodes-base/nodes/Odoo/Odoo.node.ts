@@ -3,20 +3,17 @@ import {
 } from 'n8n-core';
 
 import {
-	IDataObject,
-	INodeExecutionData,
+	IDataObject, ILoadOptionsFunctions,
+	INodeExecutionData, INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
 
 import {
-	OptionsWithUri,
-} from 'request';
-
-import {
-	contactFields,
-	contactOperations
-} from './ContactDescription';
+	recordOperations,
+	recordFields
+} from './descriptions';
+import { odooApiRequest } from './GenericFunctions';
 
 export class Odoo implements INodeType {
 	description: INodeTypeDescription = {
@@ -33,6 +30,10 @@ export class Odoo implements INodeType {
 		inputs: ['main'],
 		outputs: ['main'],
 		credentials: [
+			{
+				name: 'odooApi',
+				required: true,
+			},
 		],
 		properties: [
 			{
@@ -41,17 +42,36 @@ export class Odoo implements INodeType {
 				type: 'options',
 				options: [
 					{
-						name: 'Contact',
-						value: 'contact',
+						name: 'Record',
+						value: 'record',
 					},
 				],
-				default: 'contact',
+				default: 'record',
 				required: true,
-				description: 'Resource to consume.',
+				description: 'Resource to consume',
 			},
-			...contactOperations,
-			...contactFields,
+			...recordOperations,
+			...recordFields,
 		],
+	};
+
+
+	methods = {
+		loadOptions: {
+			async getModels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const returnData: INodePropertyOptions[] = [];
+				const responseData = await odooApiRequest.call(
+					this, 'object', 'execute', ['ir.model', 'search_read', [], ['name', 'model']]
+				);
+				for (const result of responseData.result) {
+					returnData.push({
+						name: result.name,
+						value: result.model
+					});
+				}
+				return returnData;
+			},
+		},
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
