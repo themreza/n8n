@@ -3,39 +3,35 @@
 		:name="modalName"
 		:eventBus="modalBus"
 		@enter="save"
-		title="Duplicate Workflow"
+		:title="$locale.baseText('duplicateWorkflowDialog.duplicateWorkflow')"
 		:center="true"
 		minWidth="420px"
 		maxWidth="420px"
 	>
 		<template v-slot:content>
 			<div :class="$style.content">
-				<el-row>
-					<n8n-input
-						v-model="name"
-						ref="nameInput"
-						placeholder="Enter workflow name"
-						:maxlength="MAX_WORKFLOW_NAME_LENGTH"
-					/>
-				</el-row>
-				<el-row>
-					<TagsDropdown
-						:createEnabled="true"
-						:currentTagIds="currentTagIds"
-						:eventBus="dropdownBus"
-						@blur="onTagsBlur"
-						@esc="onTagsEsc"
-						@update="onTagsUpdate"
-						placeholder="Choose or create a tag"
-						ref="dropdown"
-					/>
-				</el-row>
+				<n8n-input
+					v-model="name"
+					ref="nameInput"
+					:placeholder="$locale.baseText('duplicateWorkflowDialog.enterWorkflowName')"
+					:maxlength="MAX_WORKFLOW_NAME_LENGTH"
+				/>
+				<TagsDropdown
+					:createEnabled="true"
+					:currentTagIds="currentTagIds"
+					:eventBus="dropdownBus"
+					@blur="onTagsBlur"
+					@esc="onTagsEsc"
+					@update="onTagsUpdate"
+					:placeholder="$locale.baseText('duplicateWorkflowDialog.chooseOrCreateATag')"
+					ref="dropdown"
+				/>
 			</div>
 		</template>
 		<template v-slot:footer="{ close }">
 			<div :class="$style.footer">
-				<n8n-button @click="save" :loading="isSaving" label="Save" float="right" />
-				<n8n-button type="outline" @click="close" :disabled="isSaving" label="Cancel" float="right" />
+				<n8n-button @click="save" :loading="isSaving" :label="$locale.baseText('duplicateWorkflowDialog.save')" float="right" />
+				<n8n-button type="outline" @click="close" :disabled="isSaving" :label="$locale.baseText('duplicateWorkflowDialog.cancel')" float="right" />
 			</div>
 		</template>
 	</Modal>
@@ -54,7 +50,7 @@ import Modal from "./Modal.vue";
 export default mixins(showMessage, workflowHelpers).extend({
 	components: { TagsDropdown, Modal },
 	name: "DuplicateWorkflow",
-	props: ["dialogVisible", "modalName", "isActive"],
+	props: ["modalName", "isActive"],
 	data() {
 		const currentTagIds = this.$store.getters[
 			"workflowTags"
@@ -105,13 +101,15 @@ export default mixins(showMessage, workflowHelpers).extend({
 			const name = this.name.trim();
 			if (!name) {
 				this.$showMessage({
-					title: "Name missing",
-					message: `Please enter a name.`,
+					title: this.$locale.baseText('duplicateWorkflowDialog.showMessage.title'),
+					message: this.$locale.baseText('duplicateWorkflowDialog.showMessage.message'),
 					type: "error",
 				});
 
 				return;
 			}
+
+			const currentWorkflowId = this.$store.getters.workflowId;
 
 			this.$data.isSaving = true;
 
@@ -119,6 +117,10 @@ export default mixins(showMessage, workflowHelpers).extend({
 
 			if (saved) {
 				this.closeDialog();
+				this.$telemetry.track('User duplicated workflow', {
+					old_workflow_id: currentWorkflowId,
+					workflow_id: this.$store.getters.workflowId,
+				});
 			}
 
 			this.$data.isSaving = false;
@@ -132,8 +134,8 @@ export default mixins(showMessage, workflowHelpers).extend({
 
 <style lang="scss" module>
 .content {
-	> div {
-		margin-bottom: 15px;
+	> *:not(:last-child) {
+		margin-bottom: var(--spacing-m);
 	}
 }
 

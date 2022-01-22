@@ -12,7 +12,7 @@ let stickyNotificationQueue: ElNotificationComponent[] = [];
 
 export const showMessage = mixins(externalHooks).extend({
 	methods: {
-		$showMessage(messageData: ElNotificationOptions) {
+		$showMessage(messageData: ElNotificationOptions, track = true) {
 			messageData.dangerouslyUseHTMLString = true;
 			if (messageData.position === undefined) {
 				messageData.position = 'bottom-right';
@@ -22,6 +22,10 @@ export const showMessage = mixins(externalHooks).extend({
 
 			if (messageData.duration === 0) {
 				stickyNotificationQueue.push(notification);
+			}
+
+			if(messageData.type === 'error' && track) {
+				this.$telemetry.track('Instance FE emitted error', { error_title: messageData.title, error_message: messageData.message, workflow_id: this.$store.getters.workflowId });
 			}
 
 			return notification;
@@ -106,7 +110,8 @@ export const showMessage = mixins(externalHooks).extend({
 			return errorMessage;
 		},
 
-		$showError(error: Error, title: string, message?: string) {
+		$showError(e: Error | unknown, title: string, message?: string) {
+			const error = e as Error;
 			const messageLine = message ? `${message}<br/>` : '';
 			this.$showMessage({
 				title,
@@ -116,20 +121,21 @@ export const showMessage = mixins(externalHooks).extend({
 					${this.collapsableDetails(error)}`,
 				type: 'error',
 				duration: 0,
-			});
+			}, false);
 
 			this.$externalHooks().run('showMessage.showError', {
 				title,
 				message,
 				errorMessage: error.message,
 			});
+			this.$telemetry.track('Instance FE emitted error', { error_title: title, error_description: message, error_message: error.message, workflow_id: this.$store.getters.workflowId });
 		},
 
-		async confirmMessage (message: string, headline: string, type: MessageType | null = 'warning', confirmButtonText = 'OK', cancelButtonText = 'Cancel'): Promise<boolean> {
+		async confirmMessage (message: string, headline: string, type: MessageType | null = 'warning', confirmButtonText?: string, cancelButtonText?: string): Promise<boolean> {
 			try {
 				const options: ElMessageBoxOptions  = {
-					confirmButtonText,
-					cancelButtonText,
+					confirmButtonText: confirmButtonText || this.$locale.baseText('showMessage.ok'),
+					cancelButtonText: cancelButtonText || this.$locale.baseText('showMessage.cancel'),
 					dangerouslyUseHTMLString: true,
 					...(type && { type }),
 				};
@@ -167,7 +173,7 @@ export const showMessage = mixins(externalHooks).extend({
 					<summary
 						style="color: #ff6d5a; font-weight: bold; cursor: pointer;"
 					>
-						Show Details
+						${this.$locale.baseText('showMessage.showDetails')}
 					</summary>
 					<p>${node.name}: ${errorDescription}</p>
 				</details>

@@ -11,12 +11,12 @@ import {
 	IExecutionFlattedResponse,
 	IExecutionsListResponse,
 	IExecutionsStopData,
-	IN8nUISettings,
 	IStartRunData,
 	IWorkflowDb,
 	IWorkflowShortResponse,
 	IRestApi,
 	IWorkflowDataUpdate,
+	INodeTranslationHeaders,
 } from '@/Interface';
 import {
 	IDataObject,
@@ -78,8 +78,13 @@ export const restApi = Vue.extend({
 				stopCurrentExecution: (executionId: string): Promise<IExecutionsStopData> => {
 					return self.restApi().makeRestApiRequest('POST', `/executions-current/${executionId}/stop`);
 				},
-				getSettings: (): Promise<IN8nUISettings> => {
-					return self.restApi().makeRestApiRequest('GET', `/settings`);
+
+				getCredentialTranslation: (credentialType): Promise<object> => {
+					return self.restApi().makeRestApiRequest('GET', '/credential-translation', { credentialType });
+				},
+
+				getNodeTranslationHeaders: (): Promise<INodeTranslationHeaders> => {
+					return self.restApi().makeRestApiRequest('GET', '/node-translation-headers');
 				},
 
 				// Returns all node-types
@@ -190,6 +195,11 @@ export const restApi = Vue.extend({
 				// Returns all the available timezones
 				getTimezones: (): Promise<IDataObject> => {
 					return self.restApi().makeRestApiRequest('GET', `/options/timezones`);
+				},
+
+				// Binary data
+				getBinaryBufferString: (dataPath: string): Promise<string> => {
+					return self.restApi().makeRestApiRequest('GET', `/data/${dataPath}`);
 				},
 			};
 		},

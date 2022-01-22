@@ -1,9 +1,9 @@
 import {
-	ERROR_TRIGGER_NODE_NAME,
+	ERROR_TRIGGER_NODE_TYPE,
 	PLACEHOLDER_FILLED_AT_EXECUTION_TIME,
 	PLACEHOLDER_EMPTY_WORKFLOW_ID,
 	START_NODE_TYPE,
-	WEBHOOK_NODE_NAME,
+	WEBHOOK_NODE_TYPE,
 } from '@/constants';
 
 import {
@@ -24,6 +24,7 @@ import {
 	IRunExecutionData,
 	IWorfklowIssues,
 	IWorkflowDataProxyAdditionalKeys,
+	TelemetryHelpers,
 	Workflow,
 	NodeHelpers,
 } from 'n8n-workflow';
@@ -35,7 +36,7 @@ import {
 	IWorkflowData,
 	IWorkflowDb,
 	IWorkflowDataUpdate,
-	XYPositon,
+	XYPosition,
 	ITag,
 	IUpdateInformation,
 } from '../../Interface';
@@ -48,7 +49,7 @@ import { showMessage } from '@/components/mixins/showMessage';
 import { isEqual } from 'lodash';
 
 import mixins from 'vue-typed-mixins';
-import { v4 as uuidv4} from 'uuid';
+import { v4 as uuidv4 } from 'uuid';
 
 export const workflowHelpers = mixins(
 	externalHooks,
@@ -162,7 +163,7 @@ export const workflowHelpers = mixins(
 					// if there are any
 					let checkWebhook: string[] = [];
 					for (const nodeName of Object.keys(workflow.nodes)) {
-						if (workflow.nodes[nodeName].disabled !== true && workflow.nodes[nodeName].type === WEBHOOK_NODE_NAME) {
+						if (workflow.nodes[nodeName].disabled !== true && workflow.nodes[nodeName].type === WEBHOOK_NODE_TYPE) {
 							checkWebhook = [nodeName, ...checkWebhook, ...workflow.getChildNodes(nodeName)];
 						}
 					}
@@ -224,7 +225,7 @@ export const workflowHelpers = mixins(
 						return [];
 					},
 					getByName: (nodeType: string): INodeType | INodeVersionedType | undefined => {
-						const nodeTypeDescription = this.$store.getters.nodeType(nodeType);
+						const nodeTypeDescription = this.$store.getters.nodeType(nodeType) as INodeTypeDescription | null;
 
 						if (nodeTypeDescription === null) {
 							return undefined;
@@ -235,7 +236,7 @@ export const workflowHelpers = mixins(
 						};
 					},
 					getByNameAndVersion: (nodeType: string, version?: number): INodeType | undefined => {
-						const nodeTypeDescription = this.$store.getters.nodeType(nodeType, version);
+						const nodeTypeDescription = this.$store.getters.nodeType(nodeType, version) as INodeTypeDescription | null;
 
 						if (nodeTypeDescription === null) {
 							return undefined;
@@ -246,7 +247,7 @@ export const workflowHelpers = mixins(
 							// As we do not have the trigger/poll functions available in the frontend
 							// we use the information available to figure out what are trigger nodes
 							// @ts-ignore
-							trigger: ![ERROR_TRIGGER_NODE_NAME, START_NODE_TYPE].includes(nodeType) && nodeTypeDescription.inputs.length === 0 && !nodeTypeDescription.webhooks || undefined,
+							trigger: ![ERROR_TRIGGER_NODE_TYPE, START_NODE_TYPE].includes(nodeType) && nodeTypeDescription.inputs.length === 0 && !nodeTypeDescription.webhooks || undefined,
 						};
 					},
 				};
@@ -328,7 +329,7 @@ export const workflowHelpers = mixins(
 
 				// Get the data of the node type that we can get the default values
 				// TODO: Later also has to care about the node-type-version as defaults could be different
-				const nodeType = this.$store.getters.nodeType(node.type, node.typeVersion) as INodeTypeDescription;
+				const nodeType = this.$store.getters.nodeType(node.type, node.typeVersion) as INodeTypeDescription | null;
 
 				if (nodeType !== null) {
 					// Node-Type is known so we can save the parameters correctly
@@ -361,11 +362,6 @@ export const workflowHelpers = mixins(
 							nodeData.credentials = saveCredenetials;
 						}
 					}
-
-					// Save the node color only if it is different to the default color
-					if (node.color && node.color !== nodeType.defaults.color) {
-						nodeData.color = node.color;
-					}
 				} else {
 					// Node-Type is not known so save the data as it is
 					nodeData.credentials = node.credentials;
@@ -393,7 +389,6 @@ export const workflowHelpers = mixins(
 
 
 			resolveParameter(parameter: NodeParameterValue | INodeParameters | NodeParameterValue[] | INodeParameters[]) {
-				const inputIndex = 0;
 				const itemIndex = 0;
 				const runIndex = 0;
 				const inputName = 'main';
@@ -401,6 +396,7 @@ export const workflowHelpers = mixins(
 				const workflow = this.getWorkflow();
 				const parentNode = workflow.getParentNodes(activeNode.name, inputName, 1);
 				const executionData = this.$store.getters.getWorkflowExecution as IExecutionResponse | null;
+				const inputIndex = workflow.getNodeConnectionOutputIndex(activeNode!.name, parentNode[0]) || 0;
 				let connectionInputData = this.connectionInputData(parentNode, inputName, runIndex, inputIndex);
 
 				let runExecutionData: IRunExecutionData;
@@ -439,6 +435,32 @@ export const workflowHelpers = mixins(
 					return workflow.expression.convertObjectValueToString(returnData['__xxxxxxx__'] as object);
 				}
 				return returnData['__xxxxxxx__'];
+			},
+
+			async updateWorkflow({workflowId, active}: {workflowId: string, active?: boolean}) {
+				let data: IWorkflowDataUpdate = {};
+
+				const isCurrentWorkflow = workflowId === this.$store.getters.workflowId;
+				if (isCurrentWorkflow) {
+					data = await this.getWorkflowDataToSave();
+				}
+
+				if (active !== undefined) {
+					data.active = active;
+				}
+
+				const workflow = await this.restApi().updateWorkflow(workflowId, data);
+
+				if (isCurrentWorkflow) {
+					this.$store.commit('setActive', !!workflow.active);
+					this.$store.commit('setStateDirty', false);
+				}
+
+				if (workflow.active) {
+					this.$store.commit('setWorkflowActive', workflowId);
+				} else {
+					this.$store.commit('setWorkflowInactive', workflowId);
+				}
 			},
 
 			async saveCurrentWorkflow({name, tags}: {name?: string, tags?: string[]} = {}): Promise<boolean> {
@@ -482,8 +504,8 @@ export const workflowHelpers = mixins(
 					this.$store.commit('removeActiveAction', 'workflowSaving');
 
 					this.$showMessage({
-						title: 'Problem saving workflow',
-						message: `There was a problem saving the workflow: "${e.message}"`,
+						title: this.$locale.baseText('workflowHelpers.showMessage.title'),
+						message: this.$locale.baseText('workflowHelpers.showMessage.message') + `"${e.message}"`,
 						type: 'error',
 					});
 
@@ -556,8 +578,8 @@ export const workflowHelpers = mixins(
 					this.$store.commit('removeActiveAction', 'workflowSaving');
 
 					this.$showMessage({
-						title: 'Problem saving workflow',
-						message: `There was a problem saving the workflow: "${e.message}"`,
+						title: this.$locale.baseText('workflowHelpers.showMessage.title'),
+						message: this.$locale.baseText('workflowHelpers.showMessage.message') + `"${e.message}"`,
 						type: 'error',
 					});
 
@@ -567,7 +589,7 @@ export const workflowHelpers = mixins(
 
 			// Updates the position of all the nodes that the top-left node
 			// is at the given position
-			updateNodePositions (workflowData: IWorkflowData | IWorkflowDataUpdate, position: XYPositon): void {
+			updateNodePositions (workflowData: IWorkflowData | IWorkflowDataUpdate, position: XYPosition): void {
 				if (workflowData.nodes === undefined) {
 					return;
 				}

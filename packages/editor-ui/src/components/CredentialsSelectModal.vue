@@ -1,21 +1,21 @@
 <template>
 	<Modal
-		:name="modalName"
+		:name="CREDENTIAL_SELECT_MODAL_KEY"
 		:eventBus="modalBus"
 		width="50%"
 		:center="true"
 		maxWidth="460px"
 	>
 		<template slot="header">
-			<h2 :class="$style.title">Add new credential</h2>
+			<h2 :class="$style.title">{{ $locale.baseText('credentialSelectModal.addNewCredential') }}</h2>
 		</template>
 		<template slot="content">
-			<div :class="$style.container">
-				<div :class="$style.subtitle">Select an app or service to connect to</div>
+			<div>
+				<div :class="$style.subtitle">{{ $locale.baseText('credentialSelectModal.selectAnAppOrServiceToConnectTo') }}</div>
 				<n8n-select
 					filterable
 					defaultFirstOption
-					placeholder="Search for app..."
+					:placeholder="$locale.baseText('credentialSelectModal.searchForApp')"
 					size="xlarge"
 					ref="select"
 					:value="selected"
@@ -35,7 +35,7 @@
 		<template slot="footer">
 			<div :class="$style.footer">
 				<n8n-button
-					label="Continue"
+					:label="$locale.baseText('credentialSelectModal.continue')"
 					float="right"
 					size="large"
 					:disabled="!selected"
@@ -51,6 +51,7 @@ import Vue from 'vue';
 import { mapGetters } from "vuex";
 
 import Modal from './Modal.vue';
+import { CREDENTIAL_SELECT_MODAL_KEY } from '../constants';
 
 export default Vue.extend({
 	name: 'CredentialsSelectModal',
@@ -69,15 +70,11 @@ export default Vue.extend({
 		return {
 			modalBus: new Vue(),
 			selected: '',
+			CREDENTIAL_SELECT_MODAL_KEY,
 		};
 	},
 	computed: {
 		...mapGetters('credentials', ['allCredentialTypes']),
-	},
-	props: {
-		modalName: {
-			type: String,
-		},
 	},
 	methods: {
 		onSelect(type: string) {
@@ -86,16 +83,13 @@ export default Vue.extend({
 		openCredentialType () {
 			this.modalBus.$emit('close');
 			this.$store.dispatch('ui/openNewCredential', { type: this.selected });
+			this.$telemetry.track('User opened Credential modal', { credential_type: this.selected, source: 'primary_menu', new_credential: true, workflow_id: this.$store.getters.workflowId });
 		},
 	},
 });
 </script>
 
 <style module lang="scss">
-.container {
-	margin-bottom: var(--spacing-l);
-}
-
 .title {
 	font-size: var(--font-size-xl);
 	line-height: var(--font-line-height-regular);

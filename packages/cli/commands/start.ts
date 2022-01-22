@@ -6,7 +6,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import * as localtunnel from 'localtunnel';
-import { TUNNEL_SUBDOMAIN_ENV, UserSettings } from 'n8n-core';
+import { BinaryDataManager, IBinaryDataConfig, TUNNEL_SUBDOMAIN_ENV, UserSettings } from 'n8n-core';
 import { Command, flags } from '@oclif/command';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import * as Redis from 'ioredis';
@@ -22,8 +22,7 @@ import {
 	Db,
 	ExternalHooks,
 	GenericHelpers,
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	IExecutionsCurrentSummary,
+	InternalHooksManager,
 	LoadNodesAndCredentials,
 	NodeTypes,
 	Server,
@@ -92,8 +91,11 @@ export class Start extends Command {
 			setTimeout(() => {
 				// In case that something goes wrong with shutdown we
 				// kill after max. 30 seconds no matter what
+				console.log(`process exited after 30s`);
 				process.exit(processExitCode);
 			}, 30000);
+
+			await InternalHooksManager.getInstance().onN8nStop();
 
 			const skipWebhookDeregistration = config.get(
 				'endpoints.skipWebhoooksDeregistrationOnShutdown',
@@ -151,11 +153,6 @@ export class Start extends Command {
 				LoggerProxy.init(logger);
 				logger.info('Initializing n8n process');
 
-				// todo remove a few versions after release
-				logger.info(
-					'\nn8n now checks for new versions and security updates. You can turn this off using the environment variable N8N_VERSION_NOTIFICATIONS_ENABLED to "false"\nFor more information, please refer to https://docs.n8n.io/getting-started/installation/advanced/configuration.html\n',
-				);
-
 				// Start directly with the init of the database to improve startup time
 				const startDbInitPromise = Db.init().catch((error: Error) => {
 					logger.error(`There was an error initializing DB: "${error.message}"`);
@@ -173,10 +170,6 @@ export class Start extends Command {
 				const loadNodesAndCredentials = LoadNodesAndCredentials();
 				await loadNodesAndCredentials.init();
 
-				// Load the credentials overwrites if any exist
-				const credentialsOverwrites = CredentialsOverwrites();
-				await credentialsOverwrites.init();
-
 				// Load all external hooks
 				const externalHooks = ExternalHooks();
 				await externalHooks.init();
@@ -186,6 +179,10 @@ export class Start extends Command {
 				await nodeTypes.init(loadNodesAndCredentials.nodeTypes);
 				const credentialTypes = CredentialTypes();
 				await credentialTypes.init(loadNodesAndCredentials.credentialTypes);
+
+				// Load the credentials overwrites if any exist
+				const credentialsOverwrites = CredentialsOverwrites();
+				await credentialsOverwrites.init();
 
 				// Wait till the database is ready
 				await startDbInitPromise;
@@ -304,14 +301,20 @@ export class Start extends Command {
 					);
 				}
 
+				const instanceId = await UserSettings.getInstanceId();
+				const { cli } = await GenericHelpers.getVersions();
+				InternalHooksManager.init(instanceId, cli, nodeTypes);
+
+				const binaryDataConfig = config.get('binaryDataManager') as IBinaryDataConfig;
+				await BinaryDataManager.init(binaryDataConfig, true);
+
 				await Server.start();
 
 				// Start to get active workflows and run their triggers
 				activeWorkflowRunner = ActiveWorkflowRunner.getInstance();
 				await activeWorkflowRunner.init();
 
-				// eslint-disable-next-line @typescript-eslint/no-unused-vars
-				const waitTracker = WaitTracker();
+				WaitTracker();
 
 				const editorUrl = GenericHelpers.getBaseUrl();
 				this.log(`\nEditor is now accessible via:\n${editorUrl}`);
